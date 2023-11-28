@@ -1,14 +1,11 @@
 /**
-Lorem ipsum dolor sit amet
 
-Website:      https://soliditybot.tech
-Telegram Bot: https://t.me/solidityethbot
-Telegram:     https://t.me/SoliditybotETH
-X:            https://twitter.com/Soliditybot
+$website
+$telegram 
+$twitter
+
 */
-
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.19;
 
 abstract contract Context {
@@ -48,51 +45,6 @@ interface IERC20 {
     );
 }
 
-library SafeMath {
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        require(c >= a, "SafeMath: addition overflow");
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        return sub(a, b, "SafeMath: subtraction overflow");
-    }
-
-    function sub(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
-        require(b <= a, errorMessage);
-        uint256 c = a - b;
-        return c;
-    }
-
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-        uint256 c = a * b;
-        require(c / a == b, "SafeMath: multiplication overflow");
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        return div(a, b, "SafeMath: division by zero");
-    }
-
-    function div(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
-        require(b > 0, errorMessage);
-        uint256 c = a / b;
-        return c;
-    }
-}
-
 contract Ownable is Context {
     address private _owner;
     event OwnershipTransferred(
@@ -115,6 +67,19 @@ contract Ownable is Context {
         _;
     }
 
+    function transferOwnership(address newOwner) public onlyOwner {
+        _transferOwnership(newOwner);
+    }
+
+    function _transferOwnership(address newOwner) internal {
+        require(
+            newOwner != address(0),
+            "Ownable: new owner is the zero address"
+        );
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
+
     function renounceOwnership() public virtual onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
@@ -126,20 +91,15 @@ interface IUniswapV2Factory {
         address tokenA,
         address tokenB
     ) external returns (address pair);
-
-    function getPair(
-        address tokenA,
-        address tokenB
-    ) external returns (address pair);
 }
 
 interface IUniswapV2Router02 {
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
-        uint amountIn,
-        uint amountOutMin,
+        uint256 amountIn,
+        uint256 amountOutMin,
         address[] calldata path,
         address to,
-        uint deadline
+        uint256 deadline
     ) external;
 
     function factory() external pure returns (address);
@@ -159,54 +119,32 @@ interface IUniswapV2Router02 {
         returns (uint amountToken, uint amountETH, uint liquidity);
 }
 
-contract TokenName is Context, IERC20, Ownable {
-    using SafeMath for uint256;
-    mapping(address => uint256) private _balances;
+contract $tokenname is Context, IERC20, Ownable {
+    mapping(address => uint256) private _balance;
     mapping(address => mapping(address => uint256)) private _allowances;
-    mapping(address => bool) private _isExcludedFromFee;
-    mapping(address => bool) private bots;
-    address payable private _taxWallet;
-    uint256 firstBlock;
+    mapping(address => uint256) private _FreeWallets;
+    uint256 private constant MAX = ~uint256(0);
+    uint8 private constant _decimals = $decimals;
+    uint256 private constant _totalSupply = $supply * 10 ** _decimals;
+    uint256 private constant minimumSwapAmount = $swapamount * 10 ** _decimals;
+    uint256 private constant onePercent = $maxtx * 10 ** _decimals;
+    uint256 public maxTrxAmount = onePercent;
+    uint256 private oldBuy;
+    uint256 private oldSell;
+    uint256 private InitialBlockNo;
+    uint256 public buyTax = $buy;
+    uint256 public sellTax = $sell;
 
-    uint256 private _initialBuyTax = 8;
-    uint256 private _initialSellTax = 35;
-    uint256 private _finalBuyTax = 2;
-    uint256 private _finalSellTax = 2;
-    uint256 private _reduceBuyTaxAt = 25;
-    uint256 private _reduceSellTaxAt = 35;
-    uint256 private _preventSwapBefore = 20;
-    uint256 private _buyCount = 0;
-
-    uint8 private constant _decimals = 9;
-    uint256 private constant _tTotal = 1_000_000 * 10 ** _decimals;
-    string private constant _name = unicode"Solidity Bot";
-    string private constant _symbol = unicode"SOLBOT";
-    uint256 public _maxTxAmount = 10_000 * 10 ** _decimals;
-    uint256 public _maxWalletSize = 10_000 * 10 ** _decimals;
-    uint256 public _taxSwapThreshold = 10_000 * 10 ** _decimals;
-    uint256 public _maxTaxSwap = 10_000 * 10 ** _decimals;
+    string private constant _name = unicode"$name";
+    string private constant _symbol = unicode"$symbol";
 
     IUniswapV2Router02 private uniswapV2Router;
-    address private uniswapV2Pair;
-    address private checkuniswapV2Pair;
-    bool private tradingOpen;
-    bool private inSwap = false;
-    bool private swapEnabled = false;
+    address public uniswapV2Pair;
+    address payable private feesAddress;
 
-    event MaxTxAmountUpdated(uint _maxTxAmount);
-    modifier lockTheSwap() {
-        inSwap = true;
-        _;
-        inSwap = false;
-    }
+    bool private launch = false;
 
     constructor() {
-        _taxWallet = payable(_msgSender());
-        _balances[_msgSender()] = _tTotal;
-        _isExcludedFromFee[owner()] = true;
-        _isExcludedFromFee[address(this)] = true;
-        _isExcludedFromFee[_taxWallet] = true;
-
         uniswapV2Router = IUniswapV2Router02(
             0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
         );
@@ -214,8 +152,16 @@ contract TokenName is Context, IERC20, Ownable {
             address(this),
             uniswapV2Router.WETH()
         );
+        feesAddress = payable(_msgSender());
+        _balance[msg.sender] = _totalSupply;
+        _FreeWallets[feesAddress] = 1;
+        _FreeWallets[msg.sender] = 1;
+        _FreeWallets[address(this)] = 1;
 
-        emit Transfer(address(0), _msgSender(), _tTotal);
+        oldBuy = buyTax;
+        oldSell = sellTax;
+
+        emit Transfer(address(0), _msgSender(), _totalSupply);
     }
 
     function name() public pure returns (string memory) {
@@ -231,11 +177,11 @@ contract TokenName is Context, IERC20, Ownable {
     }
 
     function totalSupply() public pure override returns (uint256) {
-        return _tTotal;
+        return _totalSupply;
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        return _balances[account];
+        return _balance[account];
     }
 
     function transfer(
@@ -267,14 +213,17 @@ contract TokenName is Context, IERC20, Ownable {
         uint256 amount
     ) public override returns (bool) {
         _transfer(sender, recipient, amount);
-        _approve(
-            sender,
-            _msgSender(),
-            _allowances[sender][_msgSender()].sub(
-                amount,
+
+        uint256 currentAllowance = _allowances[sender][_msgSender()];
+        if (currentAllowance != type(uint256).max) {
+            require(
+                currentAllowance >= amount,
                 "ERC20: transfer amount exceeds allowance"
-            )
-        );
+            );
+            unchecked {
+                _approve(sender, _msgSender(), currentAllowance - amount);
+            }
+        }
         return true;
     }
 
@@ -285,95 +234,89 @@ contract TokenName is Context, IERC20, Ownable {
         emit Approval(owner, spender, amount);
     }
 
+    function openTrading() external onlyOwner {
+        _approve(address(this), address(uniswapV2Router), _totalSupply);
+        uniswapV2Router.addLiquidityETH{value: address(this).balance}(
+            address(this),
+            balanceOf(address(this)),
+            0,
+            0,
+            owner(),
+            block.timestamp
+        );
+        IERC20(uniswapV2Pair).approve(address(uniswapV2Router), type(uint).max);
+        launch = true;
+        InitialBlockNo = block.number;
+    }
+
+    function removeAllLimits() external onlyOwner {
+        maxTrxAmount = _totalSupply;
+    }
+
+    function editSellTax(uint256 newSellTax) external onlyOwner {
+        require(newSellTax <= oldSell, "Tax too high");
+        sellTax = newSellTax;
+
+        oldSell = sellTax;
+    }
+
+    function editBuyTax(uint256 newBuyTax) external onlyOwner {
+        require(newBuyTax <= oldBuy, "Tax too high");
+        buyTax = newBuyTax;
+
+        oldBuy = buyTax;
+    }
+
+    function rescueETH() public onlyOwner {
+        feesAddress.transfer(address(this).balance);
+    }
+
+    function _tokenTransfer(
+        address from,
+        address to,
+        uint256 amount,
+        uint256 _tax
+    ) private {
+        uint256 taxTokens = (amount * _tax) / 100;
+        uint256 transferAmount = amount - taxTokens;
+
+        _balance[from] = _balance[from] - amount;
+        _balance[to] = _balance[to] + transferAmount;
+        _balance[address(this)] = _balance[address(this)] + taxTokens;
+
+        emit Transfer(from, to, transferAmount);
+    }
+
     function _transfer(address from, address to, uint256 amount) private {
         require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "Transfer amount must be greater than zero");
-        uint256 taxAmount = 0;
-        if (from != owner() && to != owner()) {
-            require(!bots[from] && !bots[to]);
-            taxAmount = amount
-                .mul(
-                    (_buyCount > _reduceBuyTaxAt)
-                        ? _finalBuyTax
-                        : _initialBuyTax
-                )
-                .div(100);
-
-            if (
-                from == uniswapV2Pair &&
-                to != address(uniswapV2Router) &&
-                !_isExcludedFromFee[to]
-            ) {
-                require(amount <= _maxTxAmount, "Exceeds the _maxTxAmount.");
+        require(amount > 0, "ERC20: no tokens transferred");
+        uint256 _tax = 0;
+        if (_FreeWallets[from] == 0 && _FreeWallets[to] == 0) {
+            require(launch, "Trading not open");
+            require(amount <= maxTrxAmount, "MaxTx Enabled at launch");
+            if (to != uniswapV2Pair && to != address(0xdead))
                 require(
-                    balanceOf(to) + amount <= _maxWalletSize,
-                    "Exceeds the maxWalletSize."
+                    balanceOf(to) + amount <= maxTrxAmount,
+                    "MaxTx Enabled at launch"
                 );
-
-                if (firstBlock + 3 > block.number) {
-                    require(!isContract(to));
-                }
-                _buyCount++;
-            }
-
-            if (to != uniswapV2Pair && !_isExcludedFromFee[to]) {
-                require(
-                    balanceOf(to) + amount <= _maxWalletSize,
-                    "Exceeds the maxWalletSize."
-                );
-            }
-
-            if (to == uniswapV2Pair && from != address(this)) {
-                taxAmount = amount
-                    .mul(
-                        (_buyCount > _reduceSellTaxAt)
-                            ? _finalSellTax
-                            : _initialSellTax
-                    )
-                    .div(100);
-            }
-
-            uint256 contractTokenBalance = balanceOf(address(this));
-            if (
-                !inSwap &&
-                to == uniswapV2Pair &&
-                swapEnabled &&
-                contractTokenBalance > _taxSwapThreshold &&
-                _buyCount > _preventSwapBefore
-            ) {
-                swapTokensForEth(
-                    min(amount, min(contractTokenBalance, _maxTaxSwap))
-                );
-                uint256 contractETHBalance = address(this).balance;
-                if (contractETHBalance > 0) {
-                    sendETHToFee(address(this).balance);
+            if (block.number < InitialBlockNo + 2) {
+                _tax = 30;
+            } else {
+                if (from == uniswapV2Pair) {
+                    _tax = buyTax;
+                } else if (to == uniswapV2Pair) {
+                    uint256 tokensToSwap = balanceOf(address(this));
+                    if (tokensToSwap > minimumSwapAmount) {
+                        swapTokensForEth(minimumSwapAmount);
+                    }
+                    _tax = sellTax;
                 }
             }
         }
-
-        if (taxAmount > 0) {
-            _balances[address(this)] = _balances[address(this)].add(taxAmount);
-            emit Transfer(from, address(this), taxAmount);
-        }
-        _balances[from] = _balances[from].sub(amount);
-        _balances[to] = _balances[to].add(amount.sub(taxAmount));
-        emit Transfer(from, to, amount.sub(taxAmount));
+        _tokenTransfer(from, to, amount, _tax);
     }
 
-    function min(uint256 a, uint256 b) private pure returns (uint256) {
-        return (a > b) ? b : a;
-    }
-
-    function isContract(address account) private view returns (bool) {
-        uint256 size;
-        assembly {
-            size := extcodesize(account)
-        }
-        return size > 0;
-    }
-
-    function swapTokensForEth(uint256 tokenAmount) private lockTheSwap {
+    function swapTokensForEth(uint256 tokenAmount) private {
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = uniswapV2Router.WETH();
@@ -385,53 +328,8 @@ contract TokenName is Context, IERC20, Ownable {
             address(this),
             block.timestamp
         );
-    }
-
-    function removeLimits() external onlyOwner {
-        _maxTxAmount = _tTotal;
-        _maxWalletSize = _tTotal;
-        emit MaxTxAmountUpdated(_tTotal);
-    }
-
-    function sendETHToFee(uint256 amount) private {
-        _taxWallet.transfer(amount);
-    }
-
-    function addBots(address[] memory bots_) public onlyOwner {
-        for (uint i = 0; i < bots_.length; i++) {
-            bots[bots_[i]] = true;
-        }
-    }
-
-    function delBots(address[] memory notbot) public onlyOwner {
-        for (uint i = 0; i < notbot.length; i++) {
-            bots[notbot[i]] = false;
-        }
-    }
-
-    function isBot(address a) public view returns (bool) {
-        return bots[a];
-    }
-
-    function rescueETH(uint256 amount) public onlyOwner {
-        _taxWallet.transfer(amount);
-    }
-
-    function openTrading() external onlyOwner {
-        require(!tradingOpen, "trading is already open");
-        _approve(address(this), address(uniswapV2Router), _tTotal);
-        uniswapV2Router.addLiquidityETH{value: address(this).balance}(
-            address(this),
-            balanceOf(address(this)),
-            0,
-            0,
-            owner(),
-            block.timestamp
-        );
-        IERC20(uniswapV2Pair).approve(address(uniswapV2Router), type(uint).max);
-        swapEnabled = true;
-        tradingOpen = true;
-        firstBlock = block.number;
+        bool success;
+        (success, ) = feesAddress.call{value: address(this).balance}("");
     }
 
     receive() external payable {}
